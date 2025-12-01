@@ -2,11 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Open+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
+    /* PRD Colors: Primary Deep Blue #1E3A8A */
+    --background: 210 40% 98%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -15,53 +16,60 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 221 83% 25%;
+    /* Primary: Deep Blue #1E3A8A = HSL(222, 78%, 33%) */
+    --primary: 222 78% 33%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 214 32% 91%;
+    /* Secondary: Light Gray #F8FAFC */
+    --secondary: 210 40% 98%;
     --secondary-foreground: 222 47% 11%;
 
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
 
+    /* Accent: Orange #F59E0B = HSL(38, 92%, 50%) */
     --accent: 38 92% 50%;
-    --accent-foreground: 222 47% 11%;
+    --accent-foreground: 0 0% 100%;
 
-    --success: 142 76% 36%;
+    /* Success: Green #10B981 = HSL(160, 84%, 39%) */
+    --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 11%;
+    /* Warning/Destructive: Red #EF4444 = HSL(0, 84%, 60%) */
+    --warning: 0 84% 60%;
+    --warning-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 25%;
+    --ring: 222 78% 33%;
 
     --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 222 78% 33%;
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 222 78% 33%;
 
     /* Custom design tokens */
-    --gradient-hero: linear-gradient(135deg, hsl(221, 83%, 25%) 0%, hsl(221, 70%, 35%) 50%, hsl(221, 60%, 45%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 20%, 98%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(222, 78%, 33%) 0%, hsl(222, 70%, 40%) 50%, hsl(222, 60%, 50%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 40%, 98%) 100%);
     --gradient-accent: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(32, 95%, 55%) 100%);
     
-    --shadow-soft: 0 4px 20px -4px hsl(221 83% 25% / 0.1);
-    --shadow-elevated: 0 12px 40px -12px hsl(221 83% 25% / 0.15);
+    --shadow-soft: 0 4px 20px -4px hsl(222 78% 33% / 0.1);
+    --shadow-elevated: 0 12px 40px -12px hsl(222 78% 33% / 0.15);
     --shadow-glow: 0 0 30px hsl(38 92% 50% / 0.3);
 
-    --font-heading: 'DM Sans', sans-serif;
-    --font-body: 'Inter', sans-serif;
+    /* PRD Typography */
+    --font-heading: 'Inter', sans-serif;
+    --font-body: 'Open Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
   }
 
   .dark {
