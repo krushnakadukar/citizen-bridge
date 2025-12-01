@@ -1,6 +1,7 @@
 import { Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -9,7 +10,7 @@ const Header = () => {
     <header className="fixed top-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg gradient-hero flex items-center justify-center">
               <Shield className="w-5 h-5 text-primary-foreground" />
             </div>
@@ -19,22 +20,24 @@ const Header = () => {
               </h1>
               <p className="text-xs text-muted-foreground">Public Accountability Portal</p>
             </div>
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <a href="#reports" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Report Issue
             </a>
-            <a href="#transparency" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/transparency" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Budget Tracker
-            </a>
+            </Link>
             <a href="#how-it-works" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               How It Works
             </a>
-            <Button variant="default" size="sm">
-              Sign In
-            </Button>
+            <Link to="/login">
+              <Button variant="default" size="sm">
+                Sign In
+              </Button>
+            </Link>
           </nav>
 
           {/* Mobile Menu Toggle */}
@@ -53,15 +56,17 @@ const Header = () => {
               <a href="#reports" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2">
                 Report Issue
               </a>
-              <a href="#transparency" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2">
+              <Link to="/transparency" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2">
                 Budget Tracker
-              </a>
+              </Link>
               <a href="#how-it-works" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2">
                 How It Works
               </a>
-              <Button variant="default" size="sm" className="w-full mt-2">
-                Sign In
-              </Button>
+              <Link to="/login">
+                <Button variant="default" size="sm" className="w-full mt-2">
+                  Sign In
+                </Button>
+              </Link>
             </div>
           </nav>
         )}
