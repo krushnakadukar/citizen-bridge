@@ -1,14 +1,24 @@
-import { Shield, Eye, EyeOff, Check } from "lucide-react";
+import { Shield, Eye, EyeOff, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const passwordStrength = {
     hasLength: password.length >= 8,
@@ -18,6 +28,58 @@ const Register = () => {
   };
 
   const strengthCount = Object.values(passwordStrength).filter(Boolean).length;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!firstName || !lastName || !email || !password) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (strengthCount < 3) {
+      toast.error("Please create a stronger password");
+      return;
+    }
+
+    if (!agreedToTerms) {
+      toast.error("Please agree to the Terms of Service and Privacy Policy");
+      return;
+    }
+
+    setIsLoading(true);
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+        data: {
+          full_name: `${firstName} ${lastName}`.trim(),
+          phone: phone || null,
+        },
+      },
+    });
+
+    setIsLoading(false);
+
+    if (error) {
+      if (error.message.includes("already registered")) {
+        toast.error("This email is already registered. Please sign in instead.");
+      } else {
+        toast.error(error.message);
+      }
+      return;
+    }
+
+    toast.success("Account created successfully! You can now sign in.");
+    navigate("/login");
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -52,26 +114,56 @@ const Register = () => {
             <p className="text-muted-foreground">Join thousands of citizens making a difference</p>
           </div>
 
-          <form className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="John" className="h-12" />
+                <Input
+                  id="firstName"
+                  placeholder="John"
+                  className="h-12"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Doe" className="h-12" />
+                <Input
+                  id="lastName"
+                  placeholder="Doe"
+                  className="h-12"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>
-              <Input id="email" type="email" placeholder="john@example.com" className="h-12" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="john@example.com"
+                className="h-12"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number (Optional)</Label>
-              <Input id="phone" type="tel" placeholder="+1 (555) 000-0000" className="h-12" />
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1 (555) 000-0000"
+                className="h-12"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
@@ -84,6 +176,7 @@ const Register = () => {
                   className="h-12 pr-12"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
@@ -137,12 +230,21 @@ const Register = () => {
                 type="password"
                 placeholder="Confirm your password"
                 className="h-12"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={isLoading}
               />
             </div>
 
             <div className="space-y-3">
               <div className="flex items-start space-x-2">
-                <Checkbox id="terms" className="mt-1" />
+                <Checkbox
+                  id="terms"
+                  className="mt-1"
+                  checked={agreedToTerms}
+                  onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+                  disabled={isLoading}
+                />
                 <Label htmlFor="terms" className="text-sm font-normal cursor-pointer leading-relaxed">
                   I agree to the{" "}
                   <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
@@ -152,8 +254,8 @@ const Register = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-12" size="lg">
-              Create Account
+            <Button type="submit" className="w-full h-12" size="lg" disabled={isLoading}>
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Account"}
             </Button>
           </form>
 
