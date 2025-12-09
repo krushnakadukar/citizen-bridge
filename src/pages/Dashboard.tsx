@@ -117,9 +117,11 @@ const Dashboard = () => {
                       >
                         {report.status}
                       </Badge>
-                      <Button variant="ghost" size="icon">
-                        <Eye className="w-4 h-4" />
-                      </Button>
+                      <Link to={`/reports/${report.id}`}>
+                        <Button variant="ghost" size="icon">
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 ))}

@@ -9,6 +9,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import SubmitReport from "./pages/SubmitReport";
 import MyReports from "./pages/MyReports";
+import ReportDetails from "./pages/ReportDetails";
 import Transparency from "./pages/Transparency";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/submit-report" element={<SubmitReport />} />
           <Route path="/my-reports" element={<MyReports />} />
+          <Route path="/reports/:id" element={<ReportDetails />} />
           <Route path="/transparency" element={<Transparency />} />
           <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
