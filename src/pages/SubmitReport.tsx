@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Construction, 
   Users, 
@@ -9,7 +10,8 @@ import {
   X,
   Image,
   Video,
-  FileText
+  FileText,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,11 +27,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const SubmitReport = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [reportType, setReportType] = useState<"infrastructure" | "misconduct" | null>(null);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form state
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [severity, setSeverity] = useState("");
+  const [description, setDescription] = useState("");
+  const [locationAddress, setLocationAddress] = useState("");
 
   const infrastructureCategories = [
     "Roads & Potholes",
@@ -72,6 +86,122 @@ const SubmitReport = () => {
     if (file.type.startsWith("image/")) return <Image className="w-4 h-4" />;
     if (file.type.startsWith("video/")) return <Video className="w-4 h-4" />;
     return <FileText className="w-4 h-4" />;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!title || !category || !severity || !description || !reportType) {
+      toast({
+        title: "Missing Fields",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user && !isAnonymous) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to submit a report.",
+          variant: "destructive",
+        });
+        navigate("/login");
+        return;
+      }
+
+      // Get profile ID if user is logged in
+      let reporterUserId = null;
+      if (user && !isAnonymous) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+        
+        reporterUserId = profile?.id;
+      }
+
+      // Insert report
+      const { data: report, error: reportError } = await supabase
+        .from("reports")
+        .insert({
+          title,
+          description,
+          category,
+          severity: severity as "low" | "medium" | "high" | "critical",
+          type: reportType,
+          location_address: locationAddress || null,
+          is_anonymous: isAnonymous,
+          reporter_user_id: reporterUserId,
+          status: "submitted",
+        })
+        .select()
+        .single();
+
+      if (reportError) {
+        console.error("Report submission error:", reportError);
+        throw reportError;
+      }
+
+      // Upload evidence files if any
+      if (files.length > 0 && report) {
+        for (const file of files) {
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${report.id}/${Date.now()}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from("evidence-media")
+            .upload(fileName, file);
+
+          if (uploadError) {
+            console.error("File upload error:", uploadError);
+            continue;
+          }
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from("evidence-media")
+            .getPublicUrl(fileName);
+
+          // Determine file type
+          let fileType: "image" | "video" | "document" = "document";
+          if (file.type.startsWith("image/")) fileType = "image";
+          else if (file.type.startsWith("video/")) fileType = "video";
+
+          // Insert evidence record
+          await supabase.from("report_evidence").insert({
+            report_id: report.id,
+            file_url: urlData.publicUrl,
+            file_type: fileType,
+            original_filename: file.name,
+            uploaded_by_user_id: reporterUserId,
+          });
+        }
+      }
+
+      toast({
+        title: "Report Submitted!",
+        description: "Your report has been submitted successfully.",
+      });
+
+      navigate("/my-reports");
+    } catch (error: any) {
+      console.error("Error submitting report:", error);
+      toast({
+        title: "Submission Failed",
+        description: error.message || "Failed to submit report. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!reportType) {
@@ -147,7 +277,7 @@ const SubmitReport = () => {
           </div>
         </div>
 
-        <form className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Anonymous Toggle */}
           <Card className="border-border/50">
             <CardContent className="p-6">
@@ -172,19 +302,26 @@ const SubmitReport = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Title *</Label>
-                <Input id="title" placeholder="Brief title describing the issue" className="h-12" />
+                <Input 
+                  id="title" 
+                  placeholder="Brief title describing the issue" 
+                  className="h-12"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Category *</Label>
-                  <Select>
+                  <Select value={category} onValueChange={setCategory} required>
                     <SelectTrigger className="h-12">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
                       {(reportType === "infrastructure" ? infrastructureCategories : misconductCategories).map((cat) => (
-                        <SelectItem key={cat} value={cat.toLowerCase().replace(/\s+/g, "-")}>
+                        <SelectItem key={cat} value={cat}>
                           {cat}
                         </SelectItem>
                       ))}
@@ -194,7 +331,7 @@ const SubmitReport = () => {
 
                 <div className="space-y-2">
                   <Label>Severity Level *</Label>
-                  <Select>
+                  <Select value={severity} onValueChange={setSeverity} required>
                     <SelectTrigger className="h-12">
                       <SelectValue placeholder="Select severity" />
                     </SelectTrigger>
@@ -218,6 +355,9 @@ const SubmitReport = () => {
                   id="description" 
                   placeholder="Provide a detailed description of the issue..."
                   className="min-h-32 resize-none"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  required
                 />
               </div>
             </CardContent>
@@ -233,8 +373,14 @@ const SubmitReport = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="address">Address / Location Description *</Label>
-                <Input id="address" placeholder="Enter the location of the issue" className="h-12" />
+                <Label htmlFor="address">Address / Location Description</Label>
+                <Input 
+                  id="address" 
+                  placeholder="Enter the location of the issue" 
+                  className="h-12"
+                  value={locationAddress}
+                  onChange={(e) => setLocationAddress(e.target.value)}
+                />
               </div>
               <div className="aspect-video bg-muted rounded-xl flex items-center justify-center">
                 <p className="text-muted-foreground">Map integration will be displayed here</p>
@@ -281,7 +427,7 @@ const SubmitReport = () => {
                           ({(file.size / 1024 / 1024).toFixed(2)} MB)
                         </span>
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => removeFile(index)}>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeFile(index)}>
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
@@ -293,11 +439,24 @@ const SubmitReport = () => {
 
           {/* Submit */}
           <div className="flex gap-4">
-            <Button type="button" variant="outline" className="flex-1 h-12" onClick={() => setReportType(null)}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 h-12" 
+              onClick={() => setReportType(null)}
+              disabled={isSubmitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" className="flex-1 h-12">
-              Submit Report
+            <Button type="submit" className="flex-1 h-12" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Report"
+              )}
             </Button>
           </div>
         </form>
