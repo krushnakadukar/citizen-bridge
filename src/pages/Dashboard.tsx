@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { 
   FileText, 
   CheckCircle2, 
@@ -6,33 +7,153 @@ import {
   Plus, 
   Eye,
   Bell,
-  ChevronRight
+  ChevronRight,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
+
+interface Report {
+  id: string;
+  title: string;
+  status: string;
+  category: string;
+  created_at: string;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string | null;
+  created_at: string;
+  is_read: boolean;
+}
+
+interface Stats {
+  total: number;
+  resolved: number;
+  inProgress: number;
+  pending: number;
+}
 
 const Dashboard = () => {
-  const stats = [
-    { label: "Total Reports", value: "12", icon: FileText, color: "text-primary" },
-    { label: "Resolved", value: "8", icon: CheckCircle2, color: "text-success" },
-    { label: "In Progress", value: "3", icon: Clock, color: "text-accent" },
-    { label: "Impact Score", value: "847", icon: TrendingUp, color: "text-primary" },
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState("User");
+  const [stats, setStats] = useState<Stats>({ total: 0, resolved: 0, inProgress: 0, pending: 0 });
+  const [recentReports, setRecentReports] = useState<Report[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch user profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      if (profile?.full_name) {
+        setUserName(profile.full_name.split(" ")[0]);
+      }
+
+      if (!profile?.id) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch reports for this user
+      const { data: reports } = await supabase
+        .from("reports")
+        .select("id, title, status, category, created_at")
+        .eq("reporter_user_id", profile.id)
+        .eq("is_anonymous", false)
+        .order("created_at", { ascending: false });
+
+      if (reports) {
+        // Calculate stats
+        const total = reports.length;
+        const resolved = reports.filter(r => r.status === "resolved").length;
+        const inProgress = reports.filter(r => ["in_progress", "under_review", "assigned"].includes(r.status)).length;
+        const pending = reports.filter(r => r.status === "submitted").length;
+
+        setStats({ total, resolved, inProgress, pending });
+        setRecentReports(reports.slice(0, 5));
+      }
+
+      // Fetch notifications
+      const { data: notifs } = await supabase
+        .from("notifications")
+        .select("id, title, body, created_at, is_read")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (notifs) {
+        setNotifications(notifs);
+        setUnreadCount(notifs.filter(n => !n.is_read).length);
+      }
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline"; className: string }> = {
+      submitted: { label: "Pending", variant: "outline", className: "" },
+      under_review: { label: "Under Review", variant: "secondary", className: "bg-accent text-accent-foreground" },
+      assigned: { label: "Assigned", variant: "secondary", className: "bg-accent text-accent-foreground" },
+      in_progress: { label: "In Progress", variant: "secondary", className: "bg-accent text-accent-foreground" },
+      resolved: { label: "Resolved", variant: "default", className: "bg-success text-success-foreground" },
+      rejected: { label: "Rejected", variant: "outline", className: "bg-destructive/10 text-destructive" },
+    };
+    return statusMap[status] || { label: status, variant: "outline", className: "" };
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const statsData = [
+    { label: "Total Reports", value: stats.total.toString(), icon: FileText, color: "text-primary" },
+    { label: "Resolved", value: stats.resolved.toString(), icon: CheckCircle2, color: "text-success" },
+    { label: "In Progress", value: stats.inProgress.toString(), icon: Clock, color: "text-accent" },
+    { label: "Pending", value: stats.pending.toString(), icon: AlertCircle, color: "text-muted-foreground" },
   ];
 
-  const recentReports = [
-    { id: 1, title: "Pothole on Main Street", status: "In Progress", date: "2 days ago", category: "Roads" },
-    { id: 2, title: "Broken Street Light", status: "Resolved", date: "5 days ago", category: "Lighting" },
-    { id: 3, title: "Water Leak near Park", status: "Pending", date: "1 week ago", category: "Water" },
-  ];
-
-  const notifications = [
-    { id: 1, message: "Your report #1234 has been assigned to the Roads Department", time: "2 hours ago" },
-    { id: 2, message: "Budget update: New road repair fund released", time: "1 day ago" },
-    { id: 3, message: "Your report #1232 has been resolved", time: "3 days ago" },
-  ];
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -40,7 +161,7 @@ const Dashboard = () => {
         {/* Welcome Section */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="font-heading text-3xl font-bold text-foreground">Welcome back, John</h1>
+            <h1 className="font-heading text-3xl font-bold text-foreground">Welcome back, {userName}</h1>
             <p className="text-muted-foreground mt-1">Here's what's happening with your reports</p>
           </div>
           <Link to="/submit-report">
@@ -53,7 +174,7 @@ const Dashboard = () => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
+          {statsData.map((stat) => (
             <Card key={stat.label} className="border-border/50">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -83,49 +204,49 @@ const Dashboard = () => {
               </Link>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentReports.map((report) => (
-                  <div
-                    key={report.id}
-                    className="flex items-center justify-between p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{report.title}</p>
-                        <p className="text-sm text-muted-foreground">{report.category} • {report.date}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant={
-                          report.status === "Resolved"
-                            ? "default"
-                            : report.status === "In Progress"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className={
-                          report.status === "Resolved"
-                            ? "bg-success text-success-foreground"
-                            : report.status === "In Progress"
-                            ? "bg-accent text-accent-foreground"
-                            : ""
-                        }
+              {recentReports.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No reports yet</p>
+                  <Link to="/submit-report">
+                    <Button variant="link" className="mt-2">Submit your first report</Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {recentReports.map((report) => {
+                    const badge = getStatusBadge(report.status);
+                    return (
+                      <div
+                        key={report.id}
+                        className="flex items-center justify-between p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
                       >
-                        {report.status}
-                      </Badge>
-                      <Link to={`/reports/${report.id}`}>
-                        <Button variant="ghost" size="icon">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <FileText className="w-5 h-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">{report.title}</p>
+                            <p className="text-sm text-muted-foreground capitalize">
+                              {report.category} • {formatDate(report.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Badge variant={badge.variant} className={badge.className}>
+                            {badge.label}
+                          </Badge>
+                          <Link to={`/reports/${report.id}`}>
+                            <Button variant="ghost" size="icon">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -136,20 +257,32 @@ const Dashboard = () => {
                 <Bell className="w-5 h-5" />
                 Notifications
               </CardTitle>
-              <Badge variant="secondary">3 new</Badge>
+              {unreadCount > 0 && <Badge variant="secondary">{unreadCount} new</Badge>}
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
-                  >
-                    <p className="text-sm text-foreground">{notification.message}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{notification.time}</p>
-                  </div>
-                ))}
-              </div>
+              {notifications.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No notifications</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-3 rounded-lg transition-colors cursor-pointer ${
+                        notification.is_read ? "bg-muted/50 hover:bg-muted" : "bg-primary/5 hover:bg-primary/10"
+                      }`}
+                    >
+                      <p className="text-sm font-medium text-foreground">{notification.title}</p>
+                      {notification.body && (
+                        <p className="text-sm text-muted-foreground mt-1">{notification.body}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">{formatDate(notification.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
