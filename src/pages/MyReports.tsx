@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { 
   FileText, 
   Search, 
@@ -7,7 +7,9 @@ import {
   Download,
   Plus,
   ChevronDown,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,26 +26,44 @@ import {
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables, Enums } from "@/integrations/supabase/types";
 
 type Report = Tables<"reports">;
+type ReportStatus = Enums<"report_status">;
+type ReportType = Enums<"report_type">;
+
+const ITEMS_PER_PAGE = 10;
 
 const MyReports = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<ReportType | "all">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Debounce search term
   useEffect(() => {
-    fetchReports();
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1); // Reset to first page on search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const fetchReports = async () => {
-    setIsLoading(true);
-    try {
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, typeFilter]);
+
+  // Get user profile on mount
+  useEffect(() => {
+    const getProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -56,25 +76,55 @@ const MyReports = () => {
         return;
       }
 
-      // Get profile ID
       const { data: profile } = await supabase
         .from("profiles")
         .select("id")
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
-      if (!profile) {
-        console.error("Profile not found");
-        setReports([]);
-        return;
+      if (profile) {
+        setProfileId(profile.id);
+      } else {
+        setIsLoading(false);
+      }
+    };
+
+    getProfile();
+  }, [navigate, toast]);
+
+  const fetchReports = useCallback(async () => {
+    if (!profileId) return;
+
+    setIsLoading(true);
+    try {
+      // Build query with filters
+      let query = supabase
+        .from("reports")
+        .select("*", { count: "exact" })
+        .eq("reporter_user_id", profileId);
+
+      // Apply status filter
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
       }
 
-      // Fetch reports for this user
-      const { data, error } = await supabase
-        .from("reports")
-        .select("*")
-        .eq("reporter_user_id", profile.id)
-        .order("created_at", { ascending: false });
+      // Apply type filter
+      if (typeFilter !== "all") {
+        query = query.eq("type", typeFilter);
+      }
+
+      // Apply search filter (title, category, or description)
+      if (debouncedSearch) {
+        query = query.or(`title.ilike.%${debouncedSearch}%,category.ilike.%${debouncedSearch}%,description.ilike.%${debouncedSearch}%`);
+      }
+
+      // Apply pagination
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (error) {
         console.error("Error fetching reports:", error);
@@ -82,6 +132,7 @@ const MyReports = () => {
       }
 
       setReports(data || []);
+      setTotalCount(count || 0);
     } catch (error: any) {
       console.error("Error:", error);
       toast({
@@ -92,7 +143,14 @@ const MyReports = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [profileId, statusFilter, typeFilter, debouncedSearch, currentPage, toast]);
+
+  // Fetch reports when dependencies change
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -158,18 +216,68 @@ const MyReports = () => {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
-  // Filter reports
-  const filteredReports = reports.filter((report) => {
-    const matchesSearch = 
-      report.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.id.toLowerCase().includes(searchTerm.toLowerCase());
+  const handleExport = async () => {
+    if (!profileId) return;
     
-    const matchesStatus = statusFilter === "all" || report.status === statusFilter;
-    const matchesType = typeFilter === "all" || report.type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
+    try {
+      // Fetch all reports for export (without pagination)
+      let query = supabase
+        .from("reports")
+        .select("*")
+        .eq("reporter_user_id", profileId);
+
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
+      }
+      if (typeFilter !== "all") {
+        query = query.eq("type", typeFilter);
+      }
+      if (debouncedSearch) {
+        query = query.or(`title.ilike.%${debouncedSearch}%,category.ilike.%${debouncedSearch}%,description.ilike.%${debouncedSearch}%`);
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Convert to CSV
+      const headers = ["ID", "Title", "Type", "Category", "Status", "Severity", "Location", "Created At"];
+      const csvContent = [
+        headers.join(","),
+        ...(data || []).map(report => [
+          report.id,
+          `"${report.title.replace(/"/g, '""')}"`,
+          report.type,
+          report.category,
+          report.status,
+          report.severity,
+          `"${(report.location_address || "").replace(/"/g, '""')}"`,
+          report.created_at
+        ].join(","))
+      ].join("\n");
+
+      // Download file
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `my-reports-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Complete",
+        description: `${data?.length || 0} reports exported successfully.`,
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export reports.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -181,7 +289,7 @@ const MyReports = () => {
             <p className="text-muted-foreground mt-1">Track and manage all your submitted reports</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleExport} disabled={totalCount === 0}>
               <Download className="w-4 h-4" />
               Export
             </Button>
@@ -201,13 +309,13 @@ const MyReports = () => {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Search by title, ID, or category..." 
+                  placeholder="Search by title, category, or description..." 
                   className="pl-10 h-11"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ReportStatus | "all")}>
                 <SelectTrigger className="w-full md:w-40 h-11">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -221,7 +329,7 @@ const MyReports = () => {
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as ReportType | "all")}>
                 <SelectTrigger className="w-full md:w-40 h-11">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
@@ -231,10 +339,6 @@ const MyReports = () => {
                   <SelectItem value="misconduct">Misconduct</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" className="gap-2 h-11">
-                <Filter className="w-4 h-4" />
-                More Filters
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -243,33 +347,32 @@ const MyReports = () => {
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="font-heading text-xl">
-              All Reports ({filteredReports.length})
+              All Reports ({totalCount})
             </CardTitle>
-            <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
-              Sort by Date <ChevronDown className="w-4 h-4" />
-            </Button>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
-            ) : filteredReports.length === 0 ? (
+            ) : reports.length === 0 ? (
               <div className="text-center py-12">
                 <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-medium text-foreground mb-2">No reports found</h3>
                 <p className="text-muted-foreground mb-4">
-                  {reports.length === 0 
+                  {totalCount === 0 && !debouncedSearch && statusFilter === "all" && typeFilter === "all"
                     ? "You haven't submitted any reports yet." 
                     : "No reports match your filters."}
                 </p>
-                <Link to="/submit-report">
-                  <Button>Submit Your First Report</Button>
-                </Link>
+                {totalCount === 0 && !debouncedSearch && statusFilter === "all" && typeFilter === "all" && (
+                  <Link to="/submit-report">
+                    <Button>Submit Your First Report</Button>
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredReports.map((report) => (
+                {reports.map((report) => (
                   <div
                     key={report.id}
                     className="p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors border border-border/50"
@@ -318,14 +421,30 @@ const MyReports = () => {
             )}
 
             {/* Pagination */}
-            {filteredReports.length > 0 && (
+            {totalPages > 1 && (
               <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredReports.length} of {reports.length} reports
+                  Page {currentPage} of {totalPages} ({totalCount} reports)
                 </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled>Previous</Button>
-                  <Button variant="outline" size="sm" disabled>Next</Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Previous
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
                 </div>
               </div>
             )}
