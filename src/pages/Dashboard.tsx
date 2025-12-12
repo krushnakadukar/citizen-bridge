@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   FileText, 
   CheckCircle2, 
@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 interface Report {
   id: string;
@@ -45,16 +46,21 @@ interface Stats {
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("User");
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats>({ total: 0, resolved: 0, inProgress: 0, pending: 0 });
   const [recentReports, setRecentReports] = useState<Report[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    fetchDashboardData();
+  const calculateStats = useCallback((reports: Report[]) => {
+    const total = reports.length;
+    const resolved = reports.filter(r => r.status === "resolved").length;
+    const inProgress = reports.filter(r => ["in_progress", "under_review", "assigned"].includes(r.status)).length;
+    const pending = reports.filter(r => r.status === "submitted").length;
+    return { total, resolved, inProgress, pending };
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -79,6 +85,8 @@ const Dashboard = () => {
         return;
       }
 
+      setProfileId(profile.id);
+
       // Fetch reports for this user
       const { data: reports } = await supabase
         .from("reports")
@@ -88,13 +96,7 @@ const Dashboard = () => {
         .order("created_at", { ascending: false });
 
       if (reports) {
-        // Calculate stats
-        const total = reports.length;
-        const resolved = reports.filter(r => r.status === "resolved").length;
-        const inProgress = reports.filter(r => ["in_progress", "under_review", "assigned"].includes(r.status)).length;
-        const pending = reports.filter(r => r.status === "submitted").length;
-
-        setStats({ total, resolved, inProgress, pending });
+        setStats(calculateStats(reports));
         setRecentReports(reports.slice(0, 5));
       }
 
@@ -116,7 +118,107 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [calculateStats]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Real-time subscriptions
+  useEffect(() => {
+    if (!profileId) return;
+
+    // Subscribe to report changes (new reports, status updates)
+    const reportsChannel = supabase
+      .channel('dashboard-reports')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'reports',
+          filter: `reporter_user_id=eq.${profileId}`
+        },
+        (payload) => {
+          console.log('New report:', payload);
+          const newReport = payload.new as Report;
+          setRecentReports(prev => [newReport, ...prev].slice(0, 5));
+          setStats(prev => ({
+            ...prev,
+            total: prev.total + 1,
+            pending: prev.pending + 1
+          }));
+          toast.info("New report submitted");
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reports',
+          filter: `reporter_user_id=eq.${profileId}`
+        },
+        (payload) => {
+          console.log('Report updated:', payload);
+          const updatedReport = payload.new as Report;
+          setRecentReports(prev => 
+            prev.map(r => r.id === updatedReport.id ? updatedReport : r)
+          );
+          // Refetch to update stats correctly
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to new notifications
+    const notificationsChannel = supabase
+      .channel('dashboard-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profileId}`
+        },
+        (payload) => {
+          console.log('New notification:', payload);
+          const newNotif = payload.new as Notification;
+          setNotifications(prev => [newNotif, ...prev].slice(0, 5));
+          setUnreadCount(prev => prev + 1);
+          toast.info(newNotif.title);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profileId}`
+        },
+        (payload) => {
+          console.log('Notification updated:', payload);
+          const updatedNotif = payload.new as Notification;
+          setNotifications(prev =>
+            prev.map(n => n.id === updatedNotif.id ? updatedNotif : n)
+          );
+          // Recalculate unread count
+          setNotifications(prev => {
+            setUnreadCount(prev.filter(n => !n.is_read).length);
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(reportsChannel);
+      supabase.removeChannel(notificationsChannel);
+    };
+  }, [profileId, fetchDashboardData]);
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline"; className: string }> = {
