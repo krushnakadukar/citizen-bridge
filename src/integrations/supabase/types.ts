@@ -548,6 +548,7 @@ export type Database = {
         Returns: boolean
       }
       is_official_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      sanitize_html: { Args: { text_input: string }; Returns: string }
     }
     Enums: {
       app_role: "citizen" | "official" | "admin"

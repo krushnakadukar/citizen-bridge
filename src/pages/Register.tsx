@@ -7,6 +7,10 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { checkRateLimit, formatRetryTime } from "@/lib/rate-limiter";
+import { z } from "zod";
+
+const emailSchema = z.string().email("Please enter a valid email address");
 
 const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -18,6 +22,7 @@ const Register = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const navigate = useNavigate();
 
   const passwordStrength = {
@@ -31,9 +36,17 @@ const Register = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailError("");
 
     if (!firstName || !lastName || !email || !password) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // Validate email format
+    const emailValidation = emailSchema.safeParse(email);
+    if (!emailValidation.success) {
+      setEmailError(emailValidation.error.errors[0].message);
       return;
     }
 
@@ -49,6 +62,13 @@ const Register = () => {
 
     if (!agreedToTerms) {
       toast.error("Please agree to the Terms of Service and Privacy Policy");
+      return;
+    }
+
+    // Check rate limit
+    const rateLimit = checkRateLimit("register", email);
+    if (!rateLimit.allowed) {
+      toast.error(`Too many registration attempts. Please try again in ${formatRetryTime(rateLimit.retryAfterMs!)}`);
       return;
     }
 
