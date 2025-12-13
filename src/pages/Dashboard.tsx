@@ -19,6 +19,7 @@ import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 
 interface Report {
   id: string;
@@ -114,7 +115,7 @@ const Dashboard = () => {
       }
 
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+      logger.error("Error fetching dashboard data", error);
     } finally {
       setLoading(false);
     }
@@ -141,7 +142,7 @@ const Dashboard = () => {
           filter: `reporter_user_id=eq.${profileId}`
         },
         (payload) => {
-          console.log('New report:', payload);
+          logger.log('New report:', payload);
           const newReport = payload.new as Report;
           setRecentReports(prev => [newReport, ...prev].slice(0, 5));
           setStats(prev => ({
@@ -161,7 +162,7 @@ const Dashboard = () => {
           filter: `reporter_user_id=eq.${profileId}`
         },
         (payload) => {
-          console.log('Report updated:', payload);
+          logger.log('Report updated:', payload);
           const updatedReport = payload.new as Report;
           setRecentReports(prev => 
             prev.map(r => r.id === updatedReport.id ? updatedReport : r)
@@ -184,7 +185,7 @@ const Dashboard = () => {
           filter: `user_id=eq.${profileId}`
         },
         (payload) => {
-          console.log('New notification:', payload);
+          logger.log('New notification:', payload);
           const newNotif = payload.new as Notification;
           setNotifications(prev => [newNotif, ...prev].slice(0, 5));
           setUnreadCount(prev => prev + 1);
@@ -200,7 +201,7 @@ const Dashboard = () => {
           filter: `user_id=eq.${profileId}`
         },
         (payload) => {
-          console.log('Notification updated:', payload);
+          logger.log('Notification updated:', payload);
           const updatedNotif = payload.new as Notification;
           setNotifications(prev =>
             prev.map(n => n.id === updatedNotif.id ? updatedNotif : n)

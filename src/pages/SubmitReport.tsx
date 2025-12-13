@@ -29,6 +29,7 @@ import {
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 const SubmitReport = () => {
   const navigate = useNavigate();
@@ -146,7 +147,7 @@ const SubmitReport = () => {
         .single();
 
       if (reportError) {
-        console.error("Report submission error:", reportError);
+        logger.error("Report submission error", reportError);
         throw reportError;
       }
 
@@ -161,7 +162,7 @@ const SubmitReport = () => {
             .upload(fileName, file);
 
           if (uploadError) {
-            console.error("File upload error:", uploadError);
+            logger.error("File upload error", uploadError);
             continue;
           }
 
@@ -192,7 +193,7 @@ const SubmitReport = () => {
 
       navigate("/my-reports");
     } catch (error: any) {
-      console.error("Error submitting report:", error);
+      logger.error("Error submitting report", error);
       toast({
         title: "Submission Failed",
         description: error.message || "Failed to submit report. Please try again.",
