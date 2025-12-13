@@ -165,20 +165,19 @@ const SubmitReport = () => {
             continue;
           }
 
-          // Get public URL
-          const { data: urlData } = supabase.storage
-            .from("evidence-media")
-            .getPublicUrl(fileName);
+          // Store the relative file path (not public URL) for private bucket
+          // Signed URLs will be generated on-demand when viewing evidence
+          const filePath = fileName;
 
           // Determine file type
           let fileType: "image" | "video" | "document" = "document";
           if (file.type.startsWith("image/")) fileType = "image";
           else if (file.type.startsWith("video/")) fileType = "video";
 
-          // Insert evidence record
+          // Insert evidence record with relative path
           await supabase.from("report_evidence").insert({
             report_id: report.id,
-            file_url: urlData.publicUrl,
+            file_url: filePath,
             file_type: fileType,
             original_filename: file.name,
             uploaded_by_user_id: reporterUserId,

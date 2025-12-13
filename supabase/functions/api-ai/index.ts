@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +8,24 @@ const corsHeaders = {
 };
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+// Validation schemas
+const RelatedReportsSchema = z.object({
+  description: z.string().min(1).max(5000),
+  type: z.enum(["infrastructure", "misconduct"]).optional(),
+  limit: z.number().int().min(1).max(20).default(5),
+});
+
+const TransparencyQuerySchema = z.object({
+  query: z.string().min(1).max(500),
+});
+
+async function getUserFromToken(supabaseClient: any, authHeader: string | null) {
+  if (!authHeader) return null;
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user } } = await supabaseClient.auth.getUser(token);
+  return user;
+}
 
 async function callAI(messages: { role: string; content: string }[]) {
   if (!LOVABLE_API_KEY) {
@@ -46,23 +65,37 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
   const url = new URL(req.url);
   const path = url.pathname.replace("/api-ai", "");
+  const authHeader = req.headers.get("Authorization");
 
   try {
+    // Authentication required for all AI endpoints
+    const user = await getUserFromToken(supabaseClient, authHeader);
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     // POST /reports/related - Find similar reports
     if (req.method === "POST" && path === "/reports/related") {
-      const { description, type, limit = 5 } = await req.json();
-
-      if (!description) {
+      const body = await req.json();
+      const parsed = RelatedReportsSchema.safeParse(body);
+      
+      if (!parsed.success) {
         return new Response(
-          JSON.stringify({ error: "description is required" }),
+          JSON.stringify({ error: "Invalid input", details: parsed.error.flatten() }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      
+      const { description, type, limit } = parsed.data;
 
       // Get recent reports for comparison
       let query = supabaseAdmin
@@ -129,14 +162,17 @@ Return up to ${limit} most similar report IDs.`,
 
     // POST /transparency/query - Natural language query for projects
     if (req.method === "POST" && path === "/transparency/query") {
-      const { query } = await req.json();
-
-      if (!query) {
+      const body = await req.json();
+      const parsed = TransparencyQuerySchema.safeParse(body);
+      
+      if (!parsed.success) {
         return new Response(
-          JSON.stringify({ error: "query is required" }),
+          JSON.stringify({ error: "Invalid input", details: parsed.error.flatten() }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      
+      const { query } = parsed.data;
 
       // Use AI to parse the natural language query into filters
       const aiResponse = await callAI([
