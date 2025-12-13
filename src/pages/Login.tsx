@@ -7,19 +7,39 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { checkRateLimit, resetRateLimit, formatRetryTime } from "@/lib/rate-limiter";
+import { z } from "zod";
+
+const emailSchema = z.string().email("Please enter a valid email address");
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailError("");
     
     if (!email || !password) {
       toast.error("Please enter both email and password");
+      return;
+    }
+
+    // Validate email format
+    const emailValidation = emailSchema.safeParse(email);
+    if (!emailValidation.success) {
+      setEmailError(emailValidation.error.errors[0].message);
+      return;
+    }
+
+    // Check rate limit
+    const rateLimit = checkRateLimit("login", email);
+    if (!rateLimit.allowed) {
+      toast.error(`Too many login attempts. Please try again in ${formatRetryTime(rateLimit.retryAfterMs!)}`);
       return;
     }
 
@@ -43,6 +63,8 @@ const Login = () => {
       return;
     }
 
+    // Reset rate limit on successful login
+    resetRateLimit("login", email);
     toast.success("Signed in successfully!");
     navigate("/dashboard");
   };
