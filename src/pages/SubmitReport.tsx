@@ -73,9 +73,53 @@ const SubmitReport = () => {
     { value: "critical", label: "Critical", description: "Immediate danger to public safety" },
   ];
 
+  // File validation constants
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'pdf', 'doc', 'docx'];
+  const ALLOWED_MIME_PATTERNS = ['image/', 'video/', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats'];
+
+  const validateFile = (file: File): { valid: boolean; error?: string } => {
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      return { valid: false, error: `File "${file.name}" exceeds 50MB limit` };
+    }
+
+    // Check extension
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!ext || !ALLOWED_EXTENSIONS.includes(ext)) {
+      return { valid: false, error: `File "${file.name}" has an unsupported format` };
+    }
+
+    // Check MIME type
+    const isValidMime = ALLOWED_MIME_PATTERNS.some(pattern => file.type.startsWith(pattern));
+    if (!isValidMime) {
+      return { valid: false, error: `File "${file.name}" has an invalid content type` };
+    }
+
+    return { valid: true };
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles([...files, ...Array.from(e.target.files)]);
+      const newFiles = Array.from(e.target.files);
+      const validFiles: File[] = [];
+      
+      for (const file of newFiles) {
+        const validation = validateFile(file);
+        if (validation.valid) {
+          validFiles.push(file);
+        } else {
+          toast({
+            title: "Invalid File",
+            description: validation.error,
+            variant: "destructive",
+          });
+        }
+      }
+      
+      if (validFiles.length > 0) {
+        setFiles([...files, ...validFiles]);
+      }
     }
   };
 
@@ -151,38 +195,46 @@ const SubmitReport = () => {
         throw reportError;
       }
 
-      // Upload evidence files if any
+      // Upload evidence files using secure edge function
       if (files.length > 0 && report) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        
         for (const file of files) {
-          const fileExt = file.name.split(".").pop();
-          const fileName = `${report.id}/${Date.now()}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from("evidence-media")
-            .upload(fileName, file);
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("report_id", report.id);
 
-          if (uploadError) {
-            logger.error("File upload error", uploadError);
-            continue;
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-evidence`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${sessionData?.session?.access_token || ""}`,
+                },
+                body: formData,
+              }
+            );
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              logger.error("File upload error", { 
+                status: response.status, 
+                error: errorData.error || "Upload failed" 
+              });
+              toast({
+                title: "Upload Warning",
+                description: `Failed to upload "${file.name}": ${errorData.error || "Unknown error"}`,
+                variant: "destructive",
+              });
+              continue;
+            }
+
+            const result = await response.json();
+            logger.info("File uploaded successfully", { evidenceId: result.evidence?.id });
+          } catch (uploadError) {
+            logger.error("File upload exception", uploadError);
           }
-
-          // Store the relative file path (not public URL) for private bucket
-          // Signed URLs will be generated on-demand when viewing evidence
-          const filePath = fileName;
-
-          // Determine file type
-          let fileType: "image" | "video" | "document" = "document";
-          if (file.type.startsWith("image/")) fileType = "image";
-          else if (file.type.startsWith("video/")) fileType = "video";
-
-          // Insert evidence record with relative path
-          await supabase.from("report_evidence").insert({
-            report_id: report.id,
-            file_url: filePath,
-            file_type: fileType,
-            original_filename: file.name,
-            uploaded_by_user_id: reporterUserId,
-          });
         }
       }
 

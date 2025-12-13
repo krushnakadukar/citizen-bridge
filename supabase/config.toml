@@ -1,1 +1,31 @@
 project_id = "qtbjmpllnswyhbmamrxr"
+
+[functions.api-admin]
+verify_jwt = false
+
+[functions.api-ai]
+verify_jwt = false
+
+[functions.api-auth]
+verify_jwt = false
+
+[functions.api-notifications]
+verify_jwt = false
+
+[functions.api-projects]
+verify_jwt = false
+
+[functions.api-report-details]
+verify_jwt = false
+
+[functions.api-reports]
+verify_jwt = false
+
+[functions.api-transparency]
+verify_jwt = false
+
+[functions.api-users]
+verify_jwt = false
+
+[functions.upload-evidence]
+verify_jwt = false
