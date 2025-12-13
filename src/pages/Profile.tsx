@@ -21,6 +21,7 @@ import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 const Profile = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -54,7 +55,7 @@ const Profile = () => {
           setPhone(profile.phone || "");
         }
       } catch (error) {
-        console.error("Error fetching profile:", error);
+        logger.error("Error fetching profile", error);
         toast({
           title: "Error",
           description: "Failed to load profile data",
@@ -96,7 +97,7 @@ const Profile = () => {
         description: "Profile updated successfully",
       });
     } catch (error) {
-      console.error("Error saving profile:", error);
+      logger.error("Error saving profile", error);
       toast({
         title: "Error",
         description: "Failed to save profile changes",

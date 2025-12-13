@@ -27,6 +27,7 @@ import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables, Enums } from "@/integrations/supabase/types";
+import { logger } from "@/lib/logger";
 
 type Report = Tables<"reports">;
 type ReportStatus = Enums<"report_status">;
@@ -127,14 +128,14 @@ const MyReports = () => {
         .range(from, to);
 
       if (error) {
-        console.error("Error fetching reports:", error);
+        logger.error("Error fetching reports", error);
         throw error;
       }
 
       setReports(data || []);
       setTotalCount(count || 0);
     } catch (error: any) {
-      console.error("Error:", error);
+      logger.error("Error fetching reports", error);
       toast({
         title: "Error",
         description: "Failed to load reports.",
@@ -270,7 +271,7 @@ const MyReports = () => {
         description: `${data?.length || 0} reports exported successfully.`,
       });
     } catch (error) {
-      console.error("Export error:", error);
+      logger.error("Export error", error);
       toast({
         title: "Export Failed",
         description: "Failed to export reports.",

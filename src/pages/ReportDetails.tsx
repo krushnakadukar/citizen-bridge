@@ -23,6 +23,7 @@ import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 
 interface Report {
   id: string;
@@ -126,7 +127,7 @@ const ReportDetails = () => {
       if (commentsRes.data) setComments(commentsRes.data);
 
     } catch (err) {
-      console.error("Error fetching report:", err);
+      logger.error("Error fetching report", err);
       setError("Failed to load report details");
     } finally {
       setLoading(false);
@@ -154,7 +155,7 @@ const ReportDetails = () => {
           filter: `id=eq.${id}`
         },
         (payload) => {
-          console.log('Report updated:', payload);
+          logger.log('Report updated:', payload);
           setReport(prev => prev ? { ...prev, ...payload.new } : null);
           toast.info("Report status updated");
         }
@@ -173,7 +174,7 @@ const ReportDetails = () => {
           filter: `report_id=eq.${id}`
         },
         (payload) => {
-          console.log('New comment:', payload);
+          logger.log('New comment:', payload);
           setComments(prev => [...prev, payload.new as Comment]);
           toast.info("New comment added");
         }
@@ -192,7 +193,7 @@ const ReportDetails = () => {
           filter: `report_id=eq.${id}`
         },
         (payload) => {
-          console.log('New timeline event:', payload);
+          logger.log('New timeline event:', payload);
           setTimeline(prev => [...prev, payload.new as TimelineEvent]);
         }
       )
@@ -210,7 +211,7 @@ const ReportDetails = () => {
           filter: `report_id=eq.${id}`
         },
         (payload) => {
-          console.log('New evidence:', payload);
+          logger.log('New evidence:', payload);
           setEvidence(prev => [payload.new as Evidence, ...prev]);
           toast.info("New evidence uploaded");
         }
@@ -264,7 +265,7 @@ const ReportDetails = () => {
       setNewComment("");
       toast.success("Comment added");
     } catch (err) {
-      console.error("Error adding comment:", err);
+      logger.error("Error adding comment", err);
       toast.error("Failed to add comment");
     } finally {
       setSubmittingComment(false);

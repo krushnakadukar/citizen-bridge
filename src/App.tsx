@@ -13,6 +13,7 @@ import ReportDetails from "./pages/ReportDetails";
 import Transparency from "./pages/Transparency";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -26,12 +27,20 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={
+            <ProtectedRoute><Dashboard /></ProtectedRoute>
+          } />
           <Route path="/submit-report" element={<SubmitReport />} />
-          <Route path="/my-reports" element={<MyReports />} />
-          <Route path="/reports/:id" element={<ReportDetails />} />
+          <Route path="/my-reports" element={
+            <ProtectedRoute><MyReports /></ProtectedRoute>
+          } />
+          <Route path="/reports/:id" element={
+            <ProtectedRoute><ReportDetails /></ProtectedRoute>
+          } />
           <Route path="/transparency" element={<Transparency />} />
-          <Route path="/profile" element={<Profile />} />
+          <Route path="/profile" element={
+            <ProtectedRoute><Profile /></ProtectedRoute>
+          } />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
